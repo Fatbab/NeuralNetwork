@@ -1,0 +1,52 @@
+# Neural Network in R
+A while ago I worked on analysing the churn behaviour of an online app users. I'm not going to include the data set for obvious reasons
+but the following excerpt of code includes an intuitive implementation of artificial neural networks that I used for that project. Also, this was 
+the first nn I implemented which is very much based on [Victoria Catterson's Tutorial.](http://cowlet.org/2014/01/12/understanding-data-science-classification-with-neural-networks-in-r.html#training-the-network)    
+I will have to make this more readible, esp for future reference.
+
+```{r, echo=FALSE, results="hide"}
+# Calculate accuracy weighted by counts per class
+weighted.acc <- function(predictions, actual)
+{
+  freqs <- as.data.frame(table(actual))
+  tmp <- t(mapply(function (p, a) { c(a, p==a) }, predictions, actual, USE.NAMES=FALSE)) # map over both together
+  tab <- as.data.frame(table(tmp[,1], tmp[,2])) #[,2]) # gives rows of [F,T] counts, where each row is a state
+  acc.pc <- as.numeric(tab[,1])/as.numeric(freqs[,2])
+  return(sum(acc.pc)/length(acc.pc))
+}
+
+# Set up class weights to penalise the classification mistake in minority classes more
+freqs <- as.data.frame(table(data_pca$w1_retained))
+cw <- cbind(freqs[1], apply(freqs, 1, function(s) { length(data_pca[,1])/as.integer(s[2])})) # 1/weight
+class.weights <- cw[,2]
+
+results <- matrix(ncol=5, nrow=0)
+
+# Run three iterations of each
+for (i in 1:3)
+{
+  data.weights <- do.call(rbind, Map(function(s)
+  {
+    class.weights[s]
+  }, data_pca$w1_retained))
+  
+  for (h in 2:30)
+  {
+    ann <- nnet(data_pca$w1_retained[train.numeric] ~ ., data=data_pca[train.numeric,], weights=data.weights[train.numeric], size=h, decay=5e-4, maxit=200) 
+    pred <- predict(ann, data_pca[,-1])
+    tacc <- weighted.acc(round(as.numeric(pred[train.numeric])), data_pca[train.numeric,1])
+    wacc <- weighted.acc(round(as.numeric(pred[-train.numeric])), data_pca[-train.numeric,1])
+    pacc <- sum(pred[-train.numeric]==data_pca[-train.numeric,1])/length(pred[-train.numeric])
+    results <- rbind(results, c(h, tacc, wacc, pacc, 2))
+  }
+}
+
+model_nn_pca <- nnet(data_pca$w1_retained[train.numeric] ~ ., data=data_pca[train.numeric,-1], weights= data.weights[train.numeric], size=10, decay=5e-4, maxit=200) 
+model_nn_pca_pred <- round(predict(ann, data_pca[,-1]))
+nn_conf_matrix <- table(prediction = round(as.numeric(model_nn_pca_pred[-train.numeric])), reference = data_pca[-train.numeric,1])  
+
+
+nn_precision <- round( nn_conf_matrix[2,2] / (nn_conf_matrix[2,2] + nn_conf_matrix[2,1]) *100, 2)
+nn_recall <- round( nn_conf_matrix[2,2] / (nn_conf_matrix[2,2] + nn_conf_matrix[1,2])*100, 2)
+nn_accuracy <- round( ( nn_conf_matrix[2,2] + nn_conf_matrix[1,1]) / (nn_conf_matrix[1,1]+ nn_conf_matrix[1,2]+ nn_conf_matrix[2,1] + nn_conf_matrix[2,2])*100, 2)
+```
